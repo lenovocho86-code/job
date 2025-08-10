@@ -26,6 +26,7 @@ jobs:
       - name: execute py script # run main.py
         env:
           SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
+          NEW_GRAD_WEBHOOK: ${{ secrets.NEW_GRAD_WEBHOOK }}
         run: python main.py
           
       - name: commit files
