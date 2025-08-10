@@ -2,7 +2,8 @@ name: run main.py
 
 on:
   schedule:
-    - cron: '0 * * * *' # At minute 0.
+    - cron: '*/30 * * * *' # Runs every 30 minutes
+  workflow_dispatch:
 
 jobs:
   build:
