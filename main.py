@@ -9,16 +9,30 @@ import pandas as pd
 from bs4 import BeautifulSoup
 import time
 
-URL = "https://github.com/SimplifyJobs/Summer2026-Internships"
+CSV_FOLDER = "scraped_jobs//"
+
+SUMMER_INTERNSHIPS_URL = "https://github.com/SimplifyJobs/Summer2026-Internships"
+SUMMER_CSV = "summer_internships.csv"
+
+NEW_GRAD_URL = "https://github.com/SimplifyJobs/New-Grad-Positions"
+NEW_GRAD_CSV = "new_grad.csv"
+
+OFF_SEASON_INTERNSHIPS_URL = "https://github.com/SimplifyJobs/Summer2026-Internships/blob/dev/README-Off-Season.md"
+OFF_SEASON_INTERNSHIPS_CSV = "off_season_internships.csv"
+
 try:
     SLACK_WEBHOOK = os.environ["SLACK_WEBHOOK"]
 except KeyError:
     SLACK_WEBHOOK = "Token not available!"
-print(SLACK_WEBHOOK)
 
-def send_slack_message(message):
+try:
+    NEW_GRAD_WEBHOOK = os.environ["NEW_GRAD_WEBHOOK"]
+except KeyError:
+    NEW_GRAD_WEBHOOK = "Token not available!"
+
+def send_slack_message(message, webhook):
     payload = '{"text":"%s"}' % message
-    response = requests.post(SLACK_WEBHOOK, data=payload)
+    response = requests.post(webhook, data=payload)
     print(response.text)
 
 def scrape_internships(url):
@@ -47,8 +61,6 @@ def scrape_internships(url):
         # 2. Parse the HTML with BeautifulSoup
         soup = BeautifulSoup(response.text, 'html.parser')
         
-        # Find the table in the README file's content
-        # GitHub renders the README's table inside a div with id="readme"
         readme_div = soup.find('markdown-accessiblity-table')
         if not readme_div:
             print("Error: Could not find the main content area (readme div).")
@@ -99,14 +111,13 @@ def scrape_internships(url):
         
     return pd.DataFrame()
 
-def extract_internships():
+def extract_internships(url, output_filename, slack_webhook):
     start_time = time.time()
-    
-    latest_internship_df = scrape_internships(URL)
+    output_filename  = CSV_FOLDER + output_filename
+    latest_internship_df = scrape_internships(url)
     
     if not latest_internship_df.empty:
         new_internships_df = pd.DataFrame()
-        output_filename = 'internships.csv'
         if os.path.exists(output_filename):
             old_df = pd.read_csv(output_filename)
             if old_df.iloc[0]['Application Link'] != latest_internship_df.iloc[0]['Application Link']:
@@ -124,7 +135,7 @@ def extract_internships():
         if not new_internships_df.empty:
             print(new_internships_df)
             formatted_string = format_internship_digest(new_internships_df)
-            send_slack_message(formatted_string)
+            send_slack_message(formatted_string, slack_webhook)
         else:
             print("nothing")
 
@@ -161,4 +172,6 @@ def format_internship_digest(df):
     return message_lines[0] + "\n\n" + "\n".join(message_lines[1:])
 
 if __name__ == "__main__":
-    extract_internships()
+    extract_internships(SUMMER_INTERNSHIPS_URL, SUMMER_CSV, SLACK_WEBHOOK)
+    extract_internships(NEW_GRAD_URL, NEW_GRAD_CSV, NEW_GRAD_WEBHOOK)
+    # extract_internships(OFF_SEASON_INTERNSHIPS_URL, OFF_SEASON_INTERNSHIPS_CSV)
