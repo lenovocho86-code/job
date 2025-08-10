@@ -10,10 +10,14 @@ from bs4 import BeautifulSoup
 import time
 
 URL = "https://github.com/SimplifyJobs/Summer2026-Internships"
+try:
+    SLACK_WEBHOOK = os.environ["SOME_SECRET"]
+except KeyError:
+    SLACK_WEBHOOK = "Token not available!"
 
 def send_slack_message(message):
     payload = '{"text":"%s"}' % message
-    response = requests.post('***REMOVED-SLACK-WEBHOOK***', data=payload)
+    response = requests.post(SLACK_WEBHOOK, data=payload)
     print(response.text)
 
 def scrape_internships(url):
@@ -154,12 +158,6 @@ def format_internship_digest(df):
     # Join all the lines together with a newline character in between
     # Using a double newline for the title gives it some nice space.
     return message_lines[0] + "\n\n" + "\n".join(message_lines[1:])
-    
-try:
-    SOME_SECRET = os.environ["SOME_SECRET"]
-except KeyError:
-    SOME_SECRET = "Token not available!"
-
 
 if __name__ == "__main__":
     extract_internships()
