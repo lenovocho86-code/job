@@ -11,6 +11,11 @@ import time
 
 URL = "https://github.com/SimplifyJobs/Summer2026-Internships"
 
+def send_slack_message(message):
+    payload = '{"text":"%s"}' % message
+    response = requests.post('***REMOVED-SLACK-WEBHOOK***', data=payload)
+    print(response.text)
+
 def scrape_internships(url):
     """
     Scrapes internship data from the Simplify Jobs GitHub repository.
@@ -92,27 +97,64 @@ def scrape_internships(url):
 def extract_internships():
     start_time = time.time()
     
-    internship_df = scrape_internships(URL)
+    latest_internship_df = scrape_internships(URL)
     
-    if not internship_df.empty:
-        # 5. Save the data to a CSV file
+    if not latest_internship_df.empty:
+        new_internships_df = pd.DataFrame()
         output_filename = 'internships.csv'
-        internship_df.to_csv(output_filename, index=False, encoding='utf-8')
-        
-        # print("\n--- Scraping Summary ---")
-        # print(f"Successfully scraped {len(internship_df)} internships.")
-        # print(f"Data saved to '{output_filename}'")
-        
-        # # Display the first 5 rows of the DataFrame
-        # print("\nFirst 5 listings:")
-        # print(internship_df.head())
+        if os.path.exists(output_filename):
+            old_df = pd.read_csv(output_filename)
+            if old_df.iloc[0]['Application Link'] != latest_internship_df.iloc[0]['Application Link']:
+                merged_df = pd.merge(
+                    latest_internship_df,
+                    old_df,
+                    on=['Application Link'], # Use the unique link to compare rows
+                    how='left',
+                    indicator=True
+                )
+                new_internships_df = merged_df[merged_df['_merge']== 'left_only'].drop(columns=['_merge'])
+        else:
+            new_internships_df = latest_internship_df
+
+        if not new_internships_df.empty:
+            print(new_internships_df)
+            formatted_string = format_internship_digest(new_internships_df)
+            send_slack_message(formatted_string)
+        else:
+            print("nothing")
+
+        # 5. Save the data to a CSV file
+        latest_internship_df.to_csv(output_filename, index=False, encoding='utf-8')
     else:
         print("\nScraping failed. No data was saved.")
 
     end_time = time.time()
     print(f"\nTotal time taken: {end_time - start_time:.2f} seconds")
-    return internship_df
 
+def format_internship_digest(df):
+    """Formats a DataFrame of new internships into a single digest message."""
+    
+    # Start with a title line.
+    message_lines = [f"🔥 *{len(df)} New Internships Found!*"]
+
+    # Loop through each row in the DataFrame to build the list
+    for index, row in df.iterrows():
+        company = f"*{row['Company_x']}*" # Bold the company name
+        
+        # Truncate the role text to keep the line from wrapping on mobile
+        role = row['Role_x']
+        short_role = (role[:40] + '...') if len(role) > 43 else role
+        
+        # Create a clean link using Slack's format: <URL|Display Text>
+        link = f"<{row['Application Link']}|{short_role}>"
+        
+        # Add the formatted line to our list
+        message_lines.append(f"• {company} - {link}")
+        
+    # Join all the lines together with a newline character in between
+    # Using a double newline for the title gives it some nice space.
+    return message_lines[0] + "\n\n" + "\n".join(message_lines[1:])
+    
 try:
     SOME_SECRET = os.environ["SOME_SECRET"]
 except KeyError:
@@ -120,19 +162,8 @@ except KeyError:
 
 
 if __name__ == "__main__":
-    df = extract_internships()
-
-    # --- Define formatters to truncate long text ---
-    formatters = {
-        'Role': lambda x: x[:30] + '...' if len(x) > 33 else x,
-        'Application Link': lambda x: x[:35] + '...' if len(x) > 38 else x
-    }
-
-    # --- Convert the DataFrame to a formatted string ---
-    formatted_string = df.head(10).to_string(
-        formatters=formatters,
-        justify='left'
-    )
+    extract_internships()
+    
     # r = requests.get('https://weather.talkpython.fm/api/weather/?city=Berlin&country=DE')
     # if r.status_code == 200:
     #     data = r.json()
