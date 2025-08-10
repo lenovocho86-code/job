@@ -30,7 +30,6 @@ try:
 except KeyError:
     NEW_GRAD_WEBHOOK = "Token not available!"
 
-print(NEW_GRAD_WEBHOOK)
 
 def send_slack_message(message, webhook):
     payload = '{"text":"%s"}' % message
