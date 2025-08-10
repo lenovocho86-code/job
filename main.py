@@ -11,7 +11,7 @@ import time
 
 URL = "https://github.com/SimplifyJobs/Summer2026-Internships"
 try:
-    SLACK_WEBHOOK = os.environ["SOME_SECRET"]
+    SLACK_WEBHOOK = os.environ["SLACK_WEBHOOK"]
 except KeyError:
     SLACK_WEBHOOK = "Token not available!"
 print(SLACK_WEBHOOK)
