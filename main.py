@@ -14,6 +14,7 @@ try:
     SLACK_WEBHOOK = os.environ["SOME_SECRET"]
 except KeyError:
     SLACK_WEBHOOK = "Token not available!"
+print(SLACK_WEBHOOK)
 
 def send_slack_message(message):
     payload = '{"text":"%s"}' % message
