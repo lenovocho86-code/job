@@ -161,8 +161,3 @@ def format_internship_digest(df):
 
 if __name__ == "__main__":
     extract_internships()
-    
-    # r = requests.get('https://weather.talkpython.fm/api/weather/?city=Berlin&country=DE')
-    # if r.status_code == 200:
-    #     data = r.json()
-    #     temperature = data["forecast"]["temp"]
