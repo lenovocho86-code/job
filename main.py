@@ -152,7 +152,7 @@ def format_internship_digest(df):
     """Formats a DataFrame of new internships into a single digest message."""
     
     # Start with a title line.
-    message_lines = [f"🔥 *{len(df)} New Internships Found!*"]
+    message_lines = [f"🔥 *{len(df)} New Jobs Found!*"]
 
     # Loop through each row in the DataFrame to build the list
     for index, row in df.iterrows():
