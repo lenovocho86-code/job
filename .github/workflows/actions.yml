@@ -17,6 +17,7 @@ jobs:
         uses: actions/setup-python@v4
         with:
           python-version: '3.9' # install the python version needed
+          cache: 'pip' # Cache pip dependencies for faster installs
           
       - name: install python packages
         run: |

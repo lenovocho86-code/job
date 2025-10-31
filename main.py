@@ -1,24 +1,28 @@
 import logging
 import logging.handlers
 import os
+import json
 
 import datetime
 import requests
 
-import pandas as pd
 from bs4 import BeautifulSoup
 import time
+from dotenv import load_dotenv
 
-CSV_FOLDER = "scraped_jobs//"
+# Load environment variables from env file
+load_dotenv('.env')
+
+VISITED_LINKS_FOLDER = "visited_links"
 
 SUMMER_INTERNSHIPS_URL = "https://github.com/SimplifyJobs/Summer2026-Internships"
-SUMMER_CSV = "summer_internships.csv"
+SUMMER_LINKS_FILE = "summer_internships.json"
 
 NEW_GRAD_URL = "https://github.com/SimplifyJobs/New-Grad-Positions"
-NEW_GRAD_CSV = "new_grad.csv"
+NEW_GRAD_LINKS_FILE = "new_grad.json"
 
 OFF_SEASON_INTERNSHIPS_URL = "https://github.com/SimplifyJobs/Summer2026-Internships/blob/dev/README-Off-Season.md"
-OFF_SEASON_INTERNSHIPS_CSV = "off_season_internships.csv"
+OFF_SEASON_INTERNSHIPS_LINKS_FILE = "off_season_internships.json"
 
 try:
     SLACK_WEBHOOK = os.environ["SLACK_WEBHOOK"]
@@ -44,8 +48,8 @@ def scrape_internships(url):
         url (str): The URL of the GitHub page to scrape.
 
     Returns:
-        pandas.DataFrame: A DataFrame containing the scraped internship data,
-                          or an empty DataFrame if scraping fails.
+        list: A list of dictionaries containing the scraped internship data,
+              or an empty list if scraping fails.
     """
     try:
         # 1. Fetch the HTML content of the page
@@ -65,12 +69,12 @@ def scrape_internships(url):
         readme_div = soup.find('markdown-accessiblity-table')
         if not readme_div:
             print("Error: Could not find the main content area (readme div).")
-            return pd.DataFrame()
+            return []
             
         table = readme_div.find('table')
         if not table:
             print("Error: Could not find the internship table on the page.")
-            return pd.DataFrame()
+            return []
 
         # 3. Extract the data from the table rows
         internship_data = []
@@ -101,69 +105,103 @@ def scrape_internships(url):
                     'Date Posted': date_posted
                 })
 
-        # 4. Create a Pandas DataFrame
-        df = pd.DataFrame(internship_data)
-        return df
+        return internship_data
 
     except requests.exceptions.RequestException as e:
         print(f"An error occurred during the request: {e}")
     except Exception as e:
         print(f"An unexpected error occurred: {e}")
         
-    return pd.DataFrame()
+    return []
 
-def extract_internships(url, output_filename, slack_webhook):
+def load_visited_links(filepath):
+    """Load visited links from a JSON file. Returns an empty set if file doesn't exist."""
+    if os.path.exists(filepath):
+        try:
+            with open(filepath, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+                return set(data.get('visited_links', []))
+        except (json.JSONDecodeError, KeyError):
+            return set()
+    return set()
+
+def save_visited_links(filepath, visited_links):
+    """Save visited links to a JSON file."""
+    directory = os.path.dirname(filepath)
+    if directory:  # Only create directory if path has a directory component
+        os.makedirs(directory, exist_ok=True)
+    with open(filepath, 'w', encoding='utf-8') as f:
+        json.dump({'visited_links': list(visited_links)}, f, indent=2)
+
+def extract_internships(url, links_filename, slack_webhook):
     start_time = time.time()
-    output_filename  = CSV_FOLDER + output_filename
-    latest_internship_df = scrape_internships(url)
+    links_filepath = os.path.join(VISITED_LINKS_FOLDER, links_filename)
     
-    if not latest_internship_df.empty:
-        new_internships_df = pd.DataFrame()
-        if os.path.exists(output_filename):
-            old_df = pd.read_csv(output_filename)
-            if old_df.iloc[0]['Application Link'] != latest_internship_df.iloc[0]['Application Link']:
-                merged_df = pd.merge(
-                    latest_internship_df,
-                    old_df,
-                    on=['Application Link'], # Use the unique link to compare rows
-                    how='left',
-                    indicator=True
-                )
-                new_internships_df = merged_df[merged_df['_merge']== 'left_only'].drop(columns=['_merge'])
-        else:
-            new_internships_df = latest_internship_df
-
-        if not new_internships_df.empty:
-            print(new_internships_df)
-            formatted_string = format_internship_digest(new_internships_df)
+    # Scrape current internships
+    latest_internships = scrape_internships(url)
+    
+    if latest_internships:
+        # Load previously visited links
+        visited_links = load_visited_links(links_filepath)
+        
+        # Get current links from scraped data
+        current_links = {job['Application Link'] for job in latest_internships}
+        
+        # Find new internships (links we haven't visited)
+        new_links = current_links - visited_links
+        
+        if new_links:
+            # Filter internships to only include new ones
+            new_internships = [job for job in latest_internships if job['Application Link'] in new_links]
+            
+            print(f"Found {len(new_internships)} new internships:")
+            for job in new_internships:
+                print(f"  - {job['Company']}: {job['Role']}")
+            
+            formatted_string = format_internship_digest(new_internships)
+            print(formatted_string)
             send_slack_message(formatted_string, slack_webhook)
+            
+            # Update visited links with new ones
+            visited_links.update(new_links)
         else:
-            print("nothing")
+            print("No new internships found.")
 
-        # 5. Save the data to a CSV file
-        latest_internship_df.to_csv(output_filename, index=False, encoding='utf-8')
+        # Save updated visited links
+        save_visited_links(links_filepath, visited_links)
     else:
-        print("\nScraping failed. No data was saved.")
+        print("\nScraping failed. No data was processed.")
 
     end_time = time.time()
     print(f"\nTotal time taken: {end_time - start_time:.2f} seconds")
 
-def format_internship_digest(df):
-    """Formats a DataFrame of new internships into a single digest message."""
+def remove_utm_params(url):
+    """Remove UTM parameters from URL for Slack notifications."""
+    utm_suffix = "?utm_source=Simplify&ref=Simplify"
+    if url.endswith(utm_suffix):
+        # Cut off the last 33 characters (?utm_source=Simplify&ref=Simplify)
+        return url[:-33]
+    return url
+
+def format_internship_digest(internships):
+    """Formats a list of new internships into a single digest message."""
     
     # Start with a title line.
-    message_lines = [f"🔥 *{len(df)} New Jobs Found!*"]
+    message_lines = [f"🔥 *{len(internships)} New Jobs Found!*"]
 
-    # Loop through each row in the DataFrame to build the list
-    for index, row in df.iterrows():
-        company = f"*{row['Company_x']}*" # Bold the company name
+    # Loop through each internship to build the list
+    for job in internships:
+        company = f"*{job['Company']}*" # Bold the company name
         
         # Truncate the role text to keep the line from wrapping on mobile
-        role = row['Role_x']
+        role = job['Role']
         short_role = (role[:40] + '...') if len(role) > 43 else role
         
+        # Remove UTM parameters from URL for Slack
+        clean_url = remove_utm_params(job['Application Link'])
+        
         # Create a clean link using Slack's format: <URL|Display Text>
-        link = f"<{row['Application Link']}|{short_role}>"
+        link = f"<{clean_url}|{short_role}>"
         
         # Add the formatted line to our list
         message_lines.append(f"• {company} - {link}")
@@ -173,6 +211,6 @@ def format_internship_digest(df):
     return message_lines[0] + "\n\n" + "\n".join(message_lines[1:])
 
 if __name__ == "__main__":
-    extract_internships(SUMMER_INTERNSHIPS_URL, SUMMER_CSV, SLACK_WEBHOOK)
-    extract_internships(NEW_GRAD_URL, NEW_GRAD_CSV, NEW_GRAD_WEBHOOK)
-    # extract_internships(OFF_SEASON_INTERNSHIPS_URL, OFF_SEASON_INTERNSHIPS_CSV)
+    extract_internships(SUMMER_INTERNSHIPS_URL, SUMMER_LINKS_FILE, SLACK_WEBHOOK)
+    extract_internships(NEW_GRAD_URL, NEW_GRAD_LINKS_FILE, NEW_GRAD_WEBHOOK)
+    # extract_internships(OFF_SEASON_INTERNSHIPS_URL, OFF_SEASON_INTERNSHIPS_LINKS_FILE, "idk")
