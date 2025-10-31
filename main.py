@@ -159,7 +159,7 @@ def extract_internships(url, links_filename, slack_webhook):
                 print(f"  - {job['Company']}: {job['Role']}")
             
             formatted_string = format_internship_digest(new_internships)
-            print(formatted_string)
+            # print(formatted_string)
             send_slack_message(formatted_string, slack_webhook)
             
             # Update visited links with new ones
