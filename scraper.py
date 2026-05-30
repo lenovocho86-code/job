@@ -223,18 +223,10 @@ if __name__ == "__main__":
         try:
             extract_internships(
                 page,
-                SUMMER_INTERNSHIPS_URL,
-                SUMMER_LINKS_FILE,
-                "Summer Internship",
-                SUMMER_CSV_FILE,
-            )
-            extract_internships(
-                page,
                 NEW_GRAD_URL,
                 NEW_GRAD_LINKS_FILE,
                 "New Grad",
                 NEW_GRAD_CSV_FILE,
             )
-            # extract_internships(page, OFF_SEASON_INTERNSHIPS_URL, OFF_SEASON_INTERNSHIPS_LINKS_FILE, "idk", "...")
         finally:
             browser.close()
