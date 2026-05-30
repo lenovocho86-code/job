@@ -25,25 +25,24 @@ OFF_SEASON_INTERNSHIPS_URL = (
 )
 OFF_SEASON_INTERNSHIPS_LINKS_FILE = "off_season_internships.json"
 
-try:
-    SLACK_WEBHOOK = os.environ["SLACK_WEBHOOK"]
-except KeyError:
-    SLACK_WEBHOOK = "Token not available!"
-
-try:
-    NEW_GRAD_WEBHOOK = os.environ["NEW_GRAD_WEBHOOK"]
-except KeyError:
-    NEW_GRAD_WEBHOOK = "Token not available!"
+TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
+TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "")
 
 
-def send_slack_message(message, webhook):
-    if not webhook or webhook == "Token not available!":
-        print("Slack webhook not configured; skipping notification.")
+def send_telegram_message(message):
+    if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
+        print("Telegram credentials not configured; skipping notification.")
         return
-    payload = '{"text":"%s"}' % message
-    response = requests.post(webhook, data=payload, timeout=30)
+    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
+    payload = {
+        "chat_id": TELEGRAM_CHAT_ID,
+        "text": message,
+        "parse_mode": "HTML",
+        "disable_web_page_preview": True,
+    }
+    response = requests.post(url, json=payload, timeout=30)
     if not response.ok:
-        print(f"Slack post failed: {response.status_code} {response.text}")
+        print(f"Telegram post failed: {response.status_code} {response.text}")
 
 
 def normalize_application_link(url: str) -> str:
@@ -147,7 +146,7 @@ def extract_internships(
     page: Page,
     url: str,
     links_filename: str,
-    slack_webhook: str,
+    label: str,
     csv_filename: str,
 ):
     start_time = time.time()
@@ -181,7 +180,7 @@ def extract_internships(
         for job in new_internships:
             print(f"  - {job['Company']}: {job['Role']}")
 
-        send_slack_message(format_internship_digest(new_internships), slack_webhook)
+        send_telegram_message(format_internship_digest(new_internships, label))
         visited_links.update(new_links)
     else:
         print("No new positions since last run.")
@@ -193,20 +192,25 @@ def extract_internships(
 
 
 def remove_utm_params(url):
-    """Remove UTM parameters from URL for Slack notifications."""
+    """Remove UTM parameters from URL for notifications."""
     return normalize_application_link(url)
 
 
-def format_internship_digest(internships):
-    """Formats a list of new internships into a single digest message."""
-    message_lines = [f"🔥 *{len(internships)} New Jobs Found!*"]
+def _escape_html(text: str) -> str:
+    """Escape characters that are special in Telegram HTML parse mode."""
+    return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+
+def format_internship_digest(internships, label):
+    """Formats a list of new internships into a single Telegram HTML digest message."""
+    message_lines = [f"🔥 <b>{len(internships)} New {label} Jobs Found!</b>"]
 
     for job in internships:
-        company = f"*{job['Company']}*"
+        company = f"<b>{_escape_html(job['Company'])}</b>"
         role = job["Role"]
         short_role = (role[:40] + "...") if len(role) > 43 else role
         clean_url = remove_utm_params(job["Application Link"])
-        link = f"<{clean_url}|{short_role}>"
+        link = f'<a href="{_escape_html(clean_url)}">{_escape_html(short_role)}</a>'
         message_lines.append(f"• {company} - {link}")
 
     return message_lines[0] + "\n\n" + "\n".join(message_lines[1:])
@@ -221,14 +225,14 @@ if __name__ == "__main__":
                 page,
                 SUMMER_INTERNSHIPS_URL,
                 SUMMER_LINKS_FILE,
-                SLACK_WEBHOOK,
+                "Summer Internship",
                 SUMMER_CSV_FILE,
             )
             extract_internships(
                 page,
                 NEW_GRAD_URL,
                 NEW_GRAD_LINKS_FILE,
-                NEW_GRAD_WEBHOOK,
+                "New Grad",
                 NEW_GRAD_CSV_FILE,
             )
             # extract_internships(page, OFF_SEASON_INTERNSHIPS_URL, OFF_SEASON_INTERNSHIPS_LINKS_FILE, "idk", "...")
