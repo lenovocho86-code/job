@@ -2,8 +2,11 @@ name: run scraper.py
 
 on:
   schedule:
-    - cron: '0 * * * *' # Runs every hour
+    - cron: '*/10 * * * *' # Runs every 10 minutes
   workflow_dispatch:
+
+permissions:
+  contents: write
 
 jobs:
   build:
